@@ -42,7 +42,7 @@ class Draw:
 
     @property
     def circle_is_active(self) -> bool:
-        return self._circle_is_active
+        return self._circle_is_active and bpy.context.scene.zenu_pruett_radius_show
 
     def angle_to_vector(self, angle: float, dist: float):
         return Vector(((math.sin(angle)) * dist, 0, (math.cos(angle)) * dist))
@@ -108,7 +108,10 @@ class Draw:
         self.drawer_2d.draw_text(text_left - Vector((-400, 30)),
                                  f'K = {self._comb.curvature:.2f}(A = {self._comb.curvature_abs:.2f})')
         self.drawer_2d.draw_text(text_left - Vector((-400, 30 * 2)),
-                                 f'R = {self._circle_radius * 1000:.2f} mm')
+                                 f'R = {math.fabs(self._circle_radius * 1000):.2f} mm', color=(0, 1, 0))
+
+        self.drawer_2d.draw_text(text_left - Vector((-400, 30 * 3)),
+                                 f'R = {math.fabs(self._comb.radius * 1000):.2f} mm', color=(1, 0, 0))
 
         self.drawer_2d.draw_circle(c, radius=20)
         self.drawer_2d.draw_text(text_pos + Vector((0, 20)), f'{round(math.degrees(point_c.angle), 2)} °')
@@ -137,7 +140,7 @@ class Draw:
         spline = bpy.context.object.data.splines.active
         self._comb = draw_curve_comb(spline, self.drawer_3d)
 
-    def _draw_circle_curvature(self):
+    def _draw_purrte(self):
         bc_ang = self.angle_calc(self._b, self._c)
         ab_ang = self.angle_calc(self._a, self._b)
 
@@ -152,7 +155,7 @@ class Draw:
             math.cos(ab_ang)
         ))
 
-        distance = bpy.context.scene.zenu_tangent_length
+        distance = bpy.context.scene.zenu_pruett_radius
         a = self._b - Ob * distance
         b = self._b + Oa * distance
         ab_center = lerp(a, b, .5)
@@ -202,7 +205,11 @@ class Draw:
         self._b = point_b
         self._c = point_c
 
-        self._draw_circle_curvature()
+        if bpy.context.scene.zenu_pruett_radius_show:
+            self._draw_purrte()
+
+        if bpy.context.scene.zenu_comb_circle_show:
+            self.drawer_3d.draw_circle(self._comb.point, radius=self._comb.radius, segments=256, color=(1, 0, 0))
 
         self._text_pos = center + Vector((-.0005, 0, -.0005))
         self.drawer_3d.draw_lines([
@@ -332,8 +339,11 @@ class ZENU_PT_curvature_creator(BasePanel):
         col.operator(ZENU_OT_enable_view.bl_idname, depress=draw.is_enable)
         col.prop(context.scene, 'zenu_curve_height', slider=True)
         col.prop(context.scene, 'zenu_circle_radius', slider=True)
-        col.prop(context.scene, 'zenu_tangent_length', slider=True)
         col.prop(bpy.context.scene.unit_settings, 'length_unit', text='')
+
+        col = layout.column_flow(align=True)
+        col.prop(context.scene, 'zenu_pruett_radius_show', icon='RESTRICT_VIEW_ON')
+        col.prop(context.scene, 'zenu_pruett_radius', slider=True)
 
         point1 = context.scene.zenu_curve_point_b
         point2 = context.scene.zenu_curve_point_c
@@ -374,6 +384,7 @@ class ZENU_PT_curvature_creator_curve(BasePanel):
         col = layout.column_flow(align=True)
         col.operator(ZENU_OT_create_curve.bl_idname)
         col.prop(context.scene, 'zenu_curve_comb_show', icon='RESTRICT_VIEW_ON')
+        col.prop(context.scene, 'zenu_comb_circle_show', icon='RESTRICT_VIEW_ON')
         col.prop(context.scene, 'zenu_curve_comb_steps', slider=True)
         col.prop(context.scene, 'zenu_curve_comb_scale', slider=True)
         col.prop(context.scene, 'zenu_active_curve_bevel', slider=True)

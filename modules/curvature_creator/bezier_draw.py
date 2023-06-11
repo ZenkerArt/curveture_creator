@@ -23,6 +23,8 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
     curvature_abs = 0
     count = 1
     kmax = 0
+    max_radius = 0
+    point_max = Vector((0, 0, 0))
 
     for i in range(0, steps + 1):
         t = i * (1 / steps)
@@ -37,6 +39,8 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
 
         if math.fabs(c) > kmax:
             kmax = math.fabs(c)
+            point_max = p - n
+            max_radius = c
 
         curvature += c
         curvature_abs += math.fabs(c)
@@ -47,4 +51,4 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
     drawer.draw_lines(coords_comb, type='LINE_STRIP', color=color)
     drawer.draw_lines(coords_comb_line, color=(.7, .7, .7))
 
-    return curvature, curvature_abs, count
+    return curvature, curvature_abs, count, point_max, max_radius
