@@ -25,22 +25,22 @@ def init_properties():
 
     bpy.types.Scene.zenu_circle_radius = bpy.props.FloatProperty(name='Circle Radius', soft_min=.01 / divide,
                                                                  soft_max=.05 / divide,
-                                                                 subtype='DISTANCE', default=.01)
+                                                                 subtype='DISTANCE', default=2 /divide)
     bpy.types.Scene.zenu_curve_comb_steps = bpy.props.IntProperty(name='Comb Steps', min=1, soft_max=100, default=50)
 
     bpy.types.Scene.zenu_curve_comb_scale = bpy.props.FloatProperty(name='Comb Scale', min=.002 / divide,
                                                                     soft_max=.03 / divide,
-                                                                    subtype='DISTANCE', default=.00005)
+                                                                    subtype='DISTANCE', default=.005 / divide)
 
     bpy.types.Scene.zenu_curve_comb_show = bpy.props.BoolProperty(name='Comb Show', default=False)
 
     bpy.types.Scene.zenu_active_curve_bevel = bpy.props.FloatProperty(name='Curve Radius', soft_min=.1 / divide,
                                                                       soft_max=10 / divide, update=update_curve_radius,
-                                                                      subtype='DISTANCE')
+                                                                      subtype='DISTANCE', default=2 / 1000)
 
     bpy.types.Scene.zenu_import_export_path = bpy.props.StringProperty(name='File Path', subtype='FILE_PATH')
     bpy.types.Scene.zenu_pruett_radius = bpy.props.FloatProperty(name='Pruett Radius',
-                                                                 soft_min=.1 / divide, soft_max=50 / divide, default=5 / divide,
+                                                                 soft_min=.1 / divide, soft_max=50 / divide, default=1 / divide,
                                                                  subtype='DISTANCE')
     bpy.types.Scene.zenu_pruett_radius_show = bpy.props.BoolProperty(name='Pruett Radius Show', default=True)
     bpy.types.Scene.zenu_comb_circle_show = bpy.props.BoolProperty(name='Comb Circle', default=False)
