@@ -9,7 +9,7 @@ def xy2xz(value: list):
     return Vector((value[0], 0, value[1]))
 
 
-def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25):
+def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25, draw_circle=False):
     coords = []
     coords_comb = []
     coords_comb_line = []
@@ -19,9 +19,11 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
         p = xy2xz(curve.position(t))
         coords.append(p)
 
-    k = 0
-    ka = 0
+    curvature = 0
+    curvature_abs = 0
     count = 1
+    kmax = 0
+
     for i in range(0, steps + 1):
         t = i * (1 / steps)
         c = curve.curvature(t)
@@ -33,8 +35,11 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
         coords_comb_line.append(p)
         coords_comb_line.append(pn)
 
-        k += c
-        ka += math.fabs(c)
+        if math.fabs(c) > kmax:
+            kmax = math.fabs(c)
+
+        curvature += c
+        curvature_abs += math.fabs(c)
         count += 1
 
     color = (.26171875, .546875, .828125)
@@ -42,4 +47,4 @@ def bezier_draw(curve: Bezier, drawer: Draw3D, scale: float = 5, steps: int = 25
     drawer.draw_lines(coords_comb, type='LINE_STRIP', color=color)
     drawer.draw_lines(coords_comb_line, color=(.7, .7, .7))
 
-    return k, ka, count
+    return curvature, curvature_abs, count

@@ -18,8 +18,7 @@ class Draw3D:
         gpu.state.line_width_set(2)
         batch.draw(self._shader)
 
-    def draw_circle(self, pos: Vector, start=0, end=math.pi * 2, radius: float = 1):
-        segments = 24
+    def draw_circle(self, pos: Vector, start=0, end=math.pi * 2, radius: float = 1, segments: int = 24):
         coords = []
         for i in range(0, segments):
             mul = (1.0 / (segments - 1)) * end

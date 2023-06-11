@@ -1,21 +1,19 @@
 import math
 import os
+import traceback
 from typing import Any
 
-import numpy as np
-
-import blf
 import bpy
-import gpu
 from bpy_extras import view3d_utils
-from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
-from .draw_2d import Draw2D
-from .draw_3d import Draw3D
-from ...base_panel import BasePanel
-from ...utils import update_window
 from .bezier import Bezier, lerp
 from .bezier_draw import bezier_draw
+from .draw_2d import Draw2D
+from .draw_3d import Draw3D
+from .draw_curve_comb import draw_curve_comb, CurveComb
+from ...base_panel import BasePanel
+from ...utils import update_window
+from . import export_import, properties
 
 draw: 'Draw' = None
 circle_size = .0001
@@ -25,14 +23,13 @@ class Draw:
     _is_enable: bool = False
     _render: Any = None
     _render_pixel: Any = None
-    _font: int = 0
     _text_pos: Vector
     _a: Vector = Vector((0, 0, 0))
     _b: Vector = Vector((0, 0, 0))
     _c: Vector = Vector((0, 0, 0))
-    _length: float = 0
-    _k: float = 0
-    _ka: float = 0
+    _comb: CurveComb = CurveComb()
+    _circle_radius: float = 0
+    _circle_is_active: bool = False
     vectors: list[Vector]
     drawer_2d: Draw2D
     drawer_3d: Draw3D
@@ -43,11 +40,18 @@ class Draw:
         self._text_pos = Vector((0, 0, 0))
         self.vectors = []
 
+    @property
+    def circle_is_active(self) -> bool:
+        return self._circle_is_active
+
     def angle_to_vector(self, angle: float, dist: float):
         return Vector(((math.sin(angle)) * dist, 0, (math.cos(angle)) * dist))
 
+    def angle_calc(self, start: Vector, target: Vector):
+        return math.atan2(target.x - start.x, target.z - start.z)
+
     def calc(self, point, start: Vector, target: Vector) -> tuple[Vector, float]:
-        edge_angle = math.atan2(target.x - start.x, target.z - start.z)
+        edge_angle = self.angle_calc(start, target)
         dist = point.distance
         angle = point.angle
 
@@ -100,8 +104,11 @@ class Draw:
             radius_c = (size * spline.bezier_points[2].radius) * 1000
 
         text_left = Vector((0, a.y))
-        self.drawer_2d.draw_text(text_left - Vector((-400, 0)), f'L = {self._length * 1000:.2f} mm')
-        self.drawer_2d.draw_text(text_left - Vector((-400, 30)), f'K = {self._k:.2f}(A = {self._ka:.2f})')
+        self.drawer_2d.draw_text(text_left - Vector((-400, 0)), f'L = {self._comb.length * 1000:.2f} mm')
+        self.drawer_2d.draw_text(text_left - Vector((-400, 30)),
+                                 f'K = {self._comb.curvature:.2f}(A = {self._comb.curvature_abs:.2f})')
+        self.drawer_2d.draw_text(text_left - Vector((-400, 30 * 2)),
+                                 f'R = {self._circle_radius * 1000:.2f} mm')
 
         self.drawer_2d.draw_circle(c, radius=20)
         self.drawer_2d.draw_text(text_pos + Vector((0, 20)), f'{round(math.degrees(point_c.angle), 2)} °')
@@ -112,6 +119,7 @@ class Draw:
         self.drawer_2d.draw_text(lerp(a, b, .5), f'{" " * 10}{dist_b * 1000:.2f} mm')
         self.drawer_2d.draw_text(lerp(b, c, .5), f'{" " * 10}{dist_c * 1000:.2f} mm')
 
+    #
     def _move_spline(self):
         if bpy.context.object is None or not isinstance(bpy.context.object.data, bpy.types.Curve):
             return
@@ -124,38 +132,55 @@ class Draw:
     def _draw_curve_comb(self):
         if bpy.context.object is None or not isinstance(bpy.context.object.data, bpy.types.Curve):
             return
-
         if not bpy.context.scene.zenu_curve_comb_show:
             return
         spline = bpy.context.object.data.splines.active
-        points = spline.bezier_points
+        self._comb = draw_curve_comb(spline, self.drawer_3d)
 
-        sum_k = 0
-        sum_ka = 0
-        sum_count = 0
+    def _draw_circle_curvature(self):
+        bc_ang = self.angle_calc(self._b, self._c)
+        ab_ang = self.angle_calc(self._a, self._b)
 
-        for index, i in enumerate(points):
-            if index + 1 >= len(points):
-                break
-            p0 = i.co
-            p1 = i.handle_right
-            p2 = points[index + 1].handle_left
-            p3 = points[index + 1].co
-            curve = Bezier(*np.array((
-                (p0[0], p0[2]),
-                (p1[0], p1[2]),
-                (p2[0], p2[2]),
-                (p3[0], p3[2]),
-            )))
-            k, ka, c = bezier_draw(curve, self.drawer_3d, scale=bpy.context.scene.zenu_curve_comb_scale,
-                                   steps=bpy.context.scene.zenu_curve_comb_steps)
-            sum_count += c
-            sum_k += k
-            sum_ka += ka
+        Oa = Vector((
+            math.sin(bc_ang),
+            0,
+            math.cos(bc_ang)
+        ))
+        Ob = Vector((
+            math.sin(ab_ang),
+            0,
+            math.cos(ab_ang)
+        ))
 
-        self._length = spline.calc_length()
-        self._k = sum_k / sum_count
-        self._ka = sum_ka / sum_count
+        distance = bpy.context.scene.zenu_tangent_length
+        a = self._b - Ob * distance
+        b = self._b + Oa * distance
+        ab_center = lerp(a, b, .5)
+
+        median_ang = self.angle_calc(self._b, ab_center)
+
+        Oo = Vector((
+            math.sin(median_ang),
+            0,
+            math.cos(median_ang)
+        ))
+        point_c = bpy.context.scene.zenu_curve_point_c
+
+        gamma = point_c.angle
+        beta = math.radians(180) - gamma
+        o = distance / math.cos(beta / 2)
+        circle_radius = o * math.sin(beta / 2)
+        circle_position = self._b + Oo * o
+
+        if gamma < 0:
+            circle_position = self._b - Oo * o
+
+        self._circle_position = circle_position
+        self._circle_radius = circle_radius
+        # print(math.degrees(gamma))
+        self._circle_is_active = math.fabs(math.degrees(gamma)) > 1
+        if self._circle_is_active:
+            self.drawer_3d.draw_circle(circle_position, radius=circle_radius, segments=256)
 
     def _draw(self):
         pointB = bpy.context.scene.zenu_curve_point_b
@@ -176,6 +201,8 @@ class Draw:
         self._a = point_a
         self._b = point_b
         self._c = point_c
+
+        self._draw_circle_curvature()
 
         self._text_pos = center + Vector((-.0005, 0, -.0005))
         self.drawer_3d.draw_lines([
@@ -204,14 +231,14 @@ class Draw:
         try:
             self._draw_pixel()
         except Exception as e:
-            print(f'View error: {e}')
+            print(f'Pixel View error: {traceback.format_exc()}')
             self.disable()
 
     def draw(self):
         try:
             self._draw()
         except Exception as e:
-            print(f'View error: {e}')
+            print(f'3D View error: {traceback.format_exc()}')
             self.disable()
 
     def disable(self):
@@ -284,16 +311,6 @@ class ZENU_OT_enable_view(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class ZENU_OT_import_stl(bpy.types.Operator):
-    bl_label = 'Import STL'
-    bl_idname = 'zenu.import_stl'
-
-    def execute(self, context: bpy.types.Context):
-        path = bpy.path.abspath(context.scene.zenu_import_export_path)
-        bpy.ops.import_mesh.stl(global_scale=.001, filepath=path)
-        return {'FINISHED'}
-
-
 class ZENU_OT_export_stl(bpy.types.Operator):
     bl_label = 'Export STL'
     bl_idname = 'zenu.export_stl'
@@ -315,12 +332,8 @@ class ZENU_PT_curvature_creator(BasePanel):
         col.operator(ZENU_OT_enable_view.bl_idname, depress=draw.is_enable)
         col.prop(context.scene, 'zenu_curve_height', slider=True)
         col.prop(context.scene, 'zenu_circle_radius', slider=True)
+        col.prop(context.scene, 'zenu_tangent_length', slider=True)
         col.prop(bpy.context.scene.unit_settings, 'length_unit', text='')
-
-        col = layout.column_flow(align=True)
-        col.prop(bpy.context.scene, 'zenu_import_export_path', text='')
-        col.operator(ZENU_OT_import_stl.bl_idname)
-        col.operator(ZENU_OT_export_stl.bl_idname)
 
         point1 = context.scene.zenu_curve_point_b
         point2 = context.scene.zenu_curve_point_c
@@ -351,6 +364,21 @@ class ZENU_PT_curvature_creator_curve(BasePanel):
         col.prop(context.scene, 'zenu_active_curve_bevel', slider=True)
 
 
+class ZENU_PT_curvature_creator_curve(BasePanel):
+    bl_label = 'Curvature'
+    bl_parent_id = 'ZENU_PT_curvature_creator'
+
+    def draw(self, context: bpy.types.Context):
+        layout = self.layout
+
+        col = layout.column_flow(align=True)
+        col.operator(ZENU_OT_create_curve.bl_idname)
+        col.prop(context.scene, 'zenu_curve_comb_show', icon='RESTRICT_VIEW_ON')
+        col.prop(context.scene, 'zenu_curve_comb_steps', slider=True)
+        col.prop(context.scene, 'zenu_curve_comb_scale', slider=True)
+        col.prop(context.scene, 'zenu_active_curve_bevel', slider=True)
+
+
 class CurvePointInfo(bpy.types.PropertyGroup):
     distance: bpy.props.FloatProperty(name='Distance', soft_min=.01, soft_max=.05, subtype='DISTANCE')
     angle: bpy.props.FloatProperty(name='Angle', soft_max=math.pi / 2, soft_min=-math.pi / 2, subtype='ANGLE')
@@ -359,11 +387,10 @@ class CurvePointInfo(bpy.types.PropertyGroup):
 reg, unreg = bpy.utils.register_classes_factory((
     ZENU_OT_enable_view,
     ZENU_OT_create_curve,
-    ZENU_OT_import_stl,
-    ZENU_OT_export_stl,
     ZENU_PT_curvature_creator,
     ZENU_PT_curvature_creator_curve,
-    CurvePointInfo
+    *export_import.classes,
+    *properties.classes
 ))
 
 draw = Draw()
@@ -379,27 +406,7 @@ def update_curve_radius(self, context: bpy.types.Context):
 def register():
     global draw
     reg()
-
-    bpy.types.Scene.zenu_curve_point_b = bpy.props.PointerProperty(type=CurvePointInfo)
-    bpy.types.Scene.zenu_curve_point_c = bpy.props.PointerProperty(type=CurvePointInfo)
-    bpy.types.Scene.zenu_curve_height = bpy.props.FloatProperty(name='Y', soft_min=.01, soft_max=.05,
-                                                                subtype='DISTANCE')
-
-    bpy.types.Scene.zenu_circle_radius = bpy.props.FloatProperty(name='Circle Radius', soft_min=.01 / 1000,
-                                                                 soft_max=.05 / 1000,
-                                                                 subtype='DISTANCE', default=.01)
-    bpy.types.Scene.zenu_curve_comb_steps = bpy.props.IntProperty(name='Comb Steps', min=1, soft_max=100, default=50)
-    bpy.types.Scene.zenu_curve_comb_scale = bpy.props.FloatProperty(name='Comb Scale', min=.002 / 1000,
-                                                                    soft_max=.03 / 1000,
-                                                                    subtype='DISTANCE', default=.00005)
-
-    bpy.types.Scene.zenu_curve_comb_show = bpy.props.BoolProperty(name='Comb Show', default=False)
-
-    bpy.types.Scene.zenu_active_curve_bevel = bpy.props.FloatProperty(name='Curve Radius', soft_min=.1 / 1000,
-                                                                      soft_max=10 / 1000, update=update_curve_radius,
-                                                                      subtype='DISTANCE')
-
-    bpy.types.Scene.zenu_import_export_path = bpy.props.StringProperty(name='Curve Radius', subtype='FILE_PATH')
+    properties.init_properties()
 
 
 def unregister():
