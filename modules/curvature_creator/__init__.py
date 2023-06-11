@@ -180,7 +180,7 @@ class Draw:
         # print(math.degrees(gamma))
         self._circle_is_active = math.fabs(math.degrees(gamma)) > 1
         if self._circle_is_active:
-            self.drawer_3d.draw_circle(circle_position, radius=circle_radius, segments=256)
+            self.drawer_3d.draw_circle(circle_position, radius=circle_radius, segments=256, color=(0, 1, 0))
 
     def _draw(self):
         pointB = bpy.context.scene.zenu_curve_point_b
