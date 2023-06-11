@@ -4,7 +4,7 @@ import bpy
 
 
 class CurvePointInfo(bpy.types.PropertyGroup):
-    distance: bpy.props.FloatProperty(name='Distance', soft_min=.01, soft_max=.05, subtype='DISTANCE')
+    distance: bpy.props.FloatProperty(name='Distance', soft_min=.1 / 1000, soft_max=50 / 1000, subtype='DISTANCE')
     angle: bpy.props.FloatProperty(name='Angle', soft_max=math.pi / 2, soft_min=-math.pi / 2, subtype='ANGLE')
 
 
